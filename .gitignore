@@ -1,1 +1,5 @@
-files/
+files/ #excel sheet with repo links
+.env
+__pycache__/
+*.pyc
+*.pyo 
