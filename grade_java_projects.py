@@ -3,24 +3,29 @@ import os
 import subprocess
 import shutil
 import tempfile
+import re
+
+# TODO work with different sheets for submissions and results
+# TODO section wise in the tabs in sheet
+# TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
 # --- CONFIGURATION ---
-# IMPORTANT: Update these values to match your setup
+# IMPORTANT: Update these values in env to match your setup
 
 # 1. Path to your Excel file in your local OneDrive folder
-ONEDRIVE_FILE_PATH = os.path.expanduser("C:\\ICP\\OneDrive - Informatics College Pokhara Pvt Ltd\\CS4001NP_2025-26_workshop-repo.xlsx") # Example for Mac/Linux
 # ONEDRIVE_FILE_PATH = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
+ONEDRIVE_FILE_PATH = os.path.expanduser(os.getenv("ONEDRIVE_FILE_PATH")) # Example for Mac/Linux
 
 INPUT_SHEET_NAME = "Submissions"
 OUTPUT_SHEET_NAME = "Results"
 STUDENT_NAME_COLUMN = "Student Name"
 REPO_URL_COLUMN = "Repo URL"
-MAIN_JAVA_FILE = "Main.java"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
 # NEW: Input to provide to the Java program's standard input.
 # Use '\n' to simulate the user pressing the Enter key.
-PROGRAM_INPUT = "25.0\n10.0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
+#TODO set the input based on the question for different assignments
+PROGRAM_INPUT = "25.0\n0.0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
 
 # --- END OF CONFIGURATION ---
 
@@ -53,6 +58,38 @@ def run_command(command, working_dir, input_data=None):
         print(f"  Error: Command timed out after {PROGRAM_TIMEOUT} seconds.")
         return "Timeout"
 
+# look for main method in the code to find the main class
+def detect_main_class(java_files):
+    """Detect the main class with package if present."""
+    for file in java_files:
+        with open(file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+            if re.search(r'public\s+static\s+void\s+main\s*\(\s*String\s*\[\]\s*\w+\)', content):
+                class_name = os.path.splitext(os.path.basename(file))[0]
+
+                # Check for package declaration
+                package_match = re.search(r'package\s+([\w\.]+);', content)
+                if package_match:
+                    return package_match.group(1) + "." + class_name
+                else:
+                    return class_name
+    return None
+
+
+# def run_java_program(main_class, out_dir):
+#     """Run the Java program interactively in terminal."""
+#     if not main_class:
+#         print("No class with main method found.")
+#         return False
+
+#     print(f"Running Java code (Main class: {main_class})...")
+#     run_proc = subprocess.run(
+#         ["java", "-cp", out_dir, main_class]  # interactive mode
+#     )
+
+#     return run_proc.returncode == 0
+
 def process_student_repo(repo_url):
     """
     Clones, compiles, and runs a student's Java project.
@@ -73,17 +110,25 @@ def process_student_repo(repo_url):
         if clone_result is None or clone_result.returncode != 0:
             error_message = clone_result.stderr if clone_result else "Git command failed."
             return "Git Clone Error", f"Failed to clone repo.\n{error_message}"
-
-        main_file_path = find_file(clone_path, MAIN_JAVA_FILE)
-        if not main_file_path:
-            return "Incomplete", f"Could not find '{MAIN_JAVA_FILE}' in the repository."
         
-        work_dir = os.path.dirname(main_file_path)
-        main_class_name = os.path.splitext(MAIN_JAVA_FILE)[0]
+        # Look for .java files
+        java_files = []
+        for root, dirs, files in os.walk(clone_path):
+            for fname in files:
+                if fname.endswith(".java"):
+                    java_files.append(os.path.join(root, fname))
+        if not java_files:
+            return "Incomplete", "No .java files found in the repository."
 
-        print(f"  Compiling '{main_file_path}'...")
-        compile_command = ["javac", main_file_path]
-        compile_result = run_command(compile_command, work_dir)
+        main_class = detect_main_class(java_files)
+        print(f"  Detected main class: {main_class}")
+        if main_class is None:
+            return "Incomplete", "Could not find a class with a main method."
+
+        # compile all java files from repo root so package structure is preserved
+        print(f"  Compiling Java files ({len(java_files)} files)...")
+        compile_command = ["javac"] + java_files
+        compile_result = run_command(compile_command, clone_path)
 
         if compile_result == "Timeout":
             return "Compile Error", "Compiler timed out."
@@ -91,10 +136,11 @@ def process_student_repo(repo_url):
             error_message = compile_result.stderr if compile_result else "Javac command failed."
             return "Compile Error", f"Code did not compile.\n{error_message}"
 
-        print(f"  Running '{main_class_name}' with input...")
-        run_command_list = ["java", main_class_name]
+        # run using classpath = clone_path and the detected main_class (may include package)
+        print(f"  Running '{main_class}' with input...")
+        run_command_list = ["java", "-cp", clone_path, main_class]
         # *** THE IMPORTANT CHANGE IS HERE ***
-        run_result = run_command(run_command_list, work_dir, input_data=PROGRAM_INPUT)
+        run_result = run_command(run_command_list, clone_path, input_data=PROGRAM_INPUT)
 
         if run_result == "Timeout":
              return "Runtime Error", "Program timed out. It might have an infinite loop or requested more input than provided."
