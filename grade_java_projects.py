@@ -140,8 +140,21 @@ def process_student_repo(repo_url):
         return "Completed", f"Program compiled and ran successfully.\nOutput:\n{run_result.stdout}"
 
 def main():
-    """Main function to drive the script."""
-    print("--- Starting Student Project Grader ---")
+    """Main function to drive the script.
+     Ask user which workshop column to use 
+    (columns named "Workshop 1 Repo URL" .. "Workshop 11 Repo URL")
+     """
+    print("--- Starting Student Project Grader ---")  
+    while True:
+        try:
+            workshop = int(input("Enter workshop number (1-11): "))
+            if 1 <= workshop <= 11:
+                break
+        except ValueError:
+            pass
+        print("Please enter a number between 1 and 11.")
+    REPO_URL_COLUMN = f"Workshop {workshop} Repo URL"
+    print(f"Using repository column: '{REPO_URL_COLUMN}'")
 
     if not os.path.exists(STUDENT_SUBMISSIONS):
         print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
@@ -157,7 +170,6 @@ def main():
     for index, row in df.iterrows():
         student_name = row[STUDENT_NAME_COLUMN]
         repo_url = row.get(REPO_URL_COLUMN)
-
         print(f"\nProcessing {student_name}...")
         
         status, details = process_student_repo(repo_url)
