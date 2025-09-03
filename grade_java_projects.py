@@ -186,16 +186,55 @@ def main():
         
         results.append({
             STUDENT_NAME_COLUMN: student_name,
-            "Status": final_status,
-            "Details": details
+            f"Workshop {workshop} Status": final_status,
+            f"Workshop {workshop} Details": details
         })
 
     results_df = pd.DataFrame(results)
+    
 
     print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{STUDENT_RESULTS}'...")
+    ''' FIXME if there are no students name but has results then it will fail, gives -> Error writing to Excel file: cannot reindex on an axis with duplicate labels
+    if there is no data in the workshop with column name format, it start writing from the first column with the workshop column name
+    it is possible to check or set status of workshops of later weeks even if the previous weeks statuses are not there
+    Works properly if the student name column has student names'''
     try:
-        with pd.ExcelWriter(STUDENT_RESULTS, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
-            results_df.to_excel(writer, sheet_name = OUTPUT_SHEET_NAME, index = False)
+        status_col = f"Workshop {workshop} Status"
+        details_col = f"Workshop {workshop} Details"
+
+        # Read existing Results sheet if present
+        if os.path.exists(STUDENT_RESULTS):
+            try:
+                existing = pd.read_excel(STUDENT_RESULTS, sheet_name=OUTPUT_SHEET_NAME)
+            except Exception:
+                existing = pd.DataFrame()
+        else:
+            existing = pd.DataFrame()
+
+        new = results_df.copy()  # results_df contains STUDENT_NAME_COLUMN and the two workshop columns
+
+        # If an existing Results sheet has a student name column, merge by student name
+        if not existing.empty and STUDENT_NAME_COLUMN in existing.columns:
+            existing = existing.set_index(STUDENT_NAME_COLUMN)
+            new = new.set_index(STUDENT_NAME_COLUMN)
+
+            all_index = existing.index.union(new.index)
+            existing = existing.reindex(all_index)
+
+            # Update/insert the two workshop columns from the new results (aligns by student)
+            existing[status_col] = new[status_col].reindex(all_index)
+            existing[details_col] = new[details_col].reindex(all_index)
+
+            merged = existing.reset_index()
+        else:
+            # No existing results to merge with — use the new results as-is
+            merged = new.reset_index() if STUDENT_NAME_COLUMN in new.index.names else new
+
+        # Write back just the Results sheet (replace it) while preserving other sheets in the workbook
+        mode = 'a' if os.path.exists(STUDENT_RESULTS) else 'w'
+        with pd.ExcelWriter(STUDENT_RESULTS, engine='openpyxl', mode=mode, if_sheet_exists='replace') as writer:
+            merged.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
+
         print("--- Script finished successfully! ---")
     except Exception as e:
         print(f"\nError writing to Excel file: {e}")
