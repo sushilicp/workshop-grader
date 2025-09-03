@@ -4,8 +4,10 @@ import subprocess
 import shutil
 import tempfile
 import re
+from dotenv import load_dotenv
 
-# TODO work with different sheets for submissions and results
+load_dotenv()
+# work with different sheets for submissions and results
 # TODO section wise in the tabs in sheet
 # TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
@@ -13,8 +15,9 @@ import re
 # IMPORTANT: Update these values in env to match your setup
 
 # 1. Path to your Excel file in your local OneDrive folder
-# ONEDRIVE_FILE_PATH = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
-ONEDRIVE_FILE_PATH = os.path.expanduser(os.getenv("ONEDRIVE_FILE_PATH")) # Example for Mac/Linux
+# STUDENT_SUBMISSIONS = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
+STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
+STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
 
 INPUT_SHEET_NAME = "Submissions"
 OUTPUT_SHEET_NAME = "Results"
@@ -58,7 +61,6 @@ def run_command(command, working_dir, input_data=None):
         print(f"  Error: Command timed out after {PROGRAM_TIMEOUT} seconds.")
         return "Timeout"
 
-# look for main method in the code to find the main class
 def detect_main_class(java_files):
     """Detect the main class with package if present."""
     for file in java_files:
@@ -76,19 +78,6 @@ def detect_main_class(java_files):
                     return class_name
     return None
 
-
-# def run_java_program(main_class, out_dir):
-#     """Run the Java program interactively in terminal."""
-#     if not main_class:
-#         print("No class with main method found.")
-#         return False
-
-#     print(f"Running Java code (Main class: {main_class})...")
-#     run_proc = subprocess.run(
-#         ["java", "-cp", out_dir, main_class]  # interactive mode
-#     )
-
-#     return run_proc.returncode == 0
 
 def process_student_repo(repo_url):
     """
@@ -154,12 +143,12 @@ def main():
     """Main function to drive the script."""
     print("--- Starting Student Project Grader ---")
 
-    if not os.path.exists(ONEDRIVE_FILE_PATH):
-        print(f"Error: The file '{ONEDRIVE_FILE_PATH}' was not found.")
+    if not os.path.exists(STUDENT_SUBMISSIONS):
+        print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
         return
 
     try:
-        df = pd.read_excel(ONEDRIVE_FILE_PATH, sheet_name=INPUT_SHEET_NAME)
+        df = pd.read_excel(STUDENT_SUBMISSIONS, sheet_name=INPUT_SHEET_NAME)
     except Exception as e:
         print(f"Error reading Excel file: {e}")
         return
@@ -191,10 +180,10 @@ def main():
 
     results_df = pd.DataFrame(results)
 
-    print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{ONEDRIVE_FILE_PATH}'...")
+    print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{STUDENT_RESULTS}'...")
     try:
-        with pd.ExcelWriter(ONEDRIVE_FILE_PATH, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
-            results_df.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
+        with pd.ExcelWriter(STUDENT_RESULTS, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
+            results_df.to_excel(writer, sheet_name = OUTPUT_SHEET_NAME, index = False)
         print("--- Script finished successfully! ---")
     except Exception as e:
         print(f"\nError writing to Excel file: {e}")
