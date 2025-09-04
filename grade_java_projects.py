@@ -4,8 +4,10 @@ import subprocess
 import shutil
 import tempfile
 import re
+from dotenv import load_dotenv
 
-# TODO work with different sheets for submissions and results
+load_dotenv()
+# work with different sheets for submissions and results
 # TODO section wise in the tabs in sheet
 # TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
@@ -13,8 +15,9 @@ import re
 # IMPORTANT: Update these values in env to match your setup
 
 # 1. Path to your Excel file in your local OneDrive folder
-# ONEDRIVE_FILE_PATH = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
-ONEDRIVE_FILE_PATH = os.path.expanduser(os.getenv("ONEDRIVE_FILE_PATH")) # Example for Mac/Linux
+# STUDENT_SUBMISSIONS = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
+STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
+STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
 
 INPUT_SHEET_NAME = "Submissions"
 OUTPUT_SHEET_NAME = "Results"
@@ -58,7 +61,6 @@ def run_command(command, working_dir, input_data=None):
         print(f"  Error: Command timed out after {PROGRAM_TIMEOUT} seconds.")
         return "Timeout"
 
-# look for main method in the code to find the main class
 def detect_main_class(java_files):
     """Detect the main class with package if present."""
     for file in java_files:
@@ -76,19 +78,6 @@ def detect_main_class(java_files):
                     return class_name
     return None
 
-
-# def run_java_program(main_class, out_dir):
-#     """Run the Java program interactively in terminal."""
-#     if not main_class:
-#         print("No class with main method found.")
-#         return False
-
-#     print(f"Running Java code (Main class: {main_class})...")
-#     run_proc = subprocess.run(
-#         ["java", "-cp", out_dir, main_class]  # interactive mode
-#     )
-
-#     return run_proc.returncode == 0
 
 def process_student_repo(repo_url):
     """
@@ -151,15 +140,28 @@ def process_student_repo(repo_url):
         return "Completed", f"Program compiled and ran successfully.\nOutput:\n{run_result.stdout}"
 
 def main():
-    """Main function to drive the script."""
-    print("--- Starting Student Project Grader ---")
+    """Main function to drive the script.
+     Ask user which workshop column to use 
+    (columns named "Workshop 1 Repo URL" .. "Workshop 11 Repo URL")
+     """
+    print("--- Starting Student Project Grader ---")  
+    while True:
+        try:
+            workshop = int(input("Enter workshop number (1-11): "))
+            if 1 <= workshop <= 11:
+                break
+        except ValueError:
+            pass
+        print("Please enter a number between 1 and 11.")
+    REPO_URL_COLUMN = f"Workshop {workshop} Repo URL"
+    print(f"Using repository column: '{REPO_URL_COLUMN}'")
 
-    if not os.path.exists(ONEDRIVE_FILE_PATH):
-        print(f"Error: The file '{ONEDRIVE_FILE_PATH}' was not found.")
+    if not os.path.exists(STUDENT_SUBMISSIONS):
+        print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
         return
 
     try:
-        df = pd.read_excel(ONEDRIVE_FILE_PATH, sheet_name=INPUT_SHEET_NAME)
+        df = pd.read_excel(STUDENT_SUBMISSIONS, sheet_name=INPUT_SHEET_NAME)
     except Exception as e:
         print(f"Error reading Excel file: {e}")
         return
@@ -168,7 +170,6 @@ def main():
     for index, row in df.iterrows():
         student_name = row[STUDENT_NAME_COLUMN]
         repo_url = row.get(REPO_URL_COLUMN)
-
         print(f"\nProcessing {student_name}...")
         
         status, details = process_student_repo(repo_url)
@@ -185,16 +186,55 @@ def main():
         
         results.append({
             STUDENT_NAME_COLUMN: student_name,
-            "Status": final_status,
-            "Details": details
+            f"Workshop {workshop} Status": final_status,
+            f"Workshop {workshop} Details": details
         })
 
     results_df = pd.DataFrame(results)
+    
 
-    print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{ONEDRIVE_FILE_PATH}'...")
+    print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{STUDENT_RESULTS}'...")
+    ''' FIXME if there are no students name but has results then it will fail, gives -> Error writing to Excel file: cannot reindex on an axis with duplicate labels
+    if there is no data in the workshop with column name format, it start writing from the first column with the workshop column name
+    it is possible to check or set status of workshops of later weeks even if the previous weeks statuses are not there
+    Works properly if the student name column has student names'''
     try:
-        with pd.ExcelWriter(ONEDRIVE_FILE_PATH, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
-            results_df.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
+        status_col = f"Workshop {workshop} Status"
+        details_col = f"Workshop {workshop} Details"
+
+        # Read existing Results sheet if present
+        if os.path.exists(STUDENT_RESULTS):
+            try:
+                existing = pd.read_excel(STUDENT_RESULTS, sheet_name=OUTPUT_SHEET_NAME)
+            except Exception:
+                existing = pd.DataFrame()
+        else:
+            existing = pd.DataFrame()
+
+        new = results_df.copy()  # results_df contains STUDENT_NAME_COLUMN and the two workshop columns
+
+        # If an existing Results sheet has a student name column, merge by student name
+        if not existing.empty and STUDENT_NAME_COLUMN in existing.columns:
+            existing = existing.set_index(STUDENT_NAME_COLUMN)
+            new = new.set_index(STUDENT_NAME_COLUMN)
+
+            all_index = existing.index.union(new.index)
+            existing = existing.reindex(all_index)
+
+            # Update/insert the two workshop columns from the new results (aligns by student)
+            existing[status_col] = new[status_col].reindex(all_index)
+            existing[details_col] = new[details_col].reindex(all_index)
+
+            merged = existing.reset_index()
+        else:
+            # No existing results to merge with — use the new results as-is
+            merged = new.reset_index() if STUDENT_NAME_COLUMN in new.index.names else new
+
+        # Write back just the Results sheet (replace it) while preserving other sheets in the workbook
+        mode = 'a' if os.path.exists(STUDENT_RESULTS) else 'w'
+        with pd.ExcelWriter(STUDENT_RESULTS, engine='openpyxl', mode=mode, if_sheet_exists='replace') as writer:
+            merged.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
+
         print("--- Script finished successfully! ---")
     except Exception as e:
         print(f"\nError writing to Excel file: {e}")
