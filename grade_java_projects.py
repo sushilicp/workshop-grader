@@ -4,11 +4,12 @@ import subprocess
 import shutil
 import tempfile
 import re
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
 # work with different sheets for submissions and results
-# TODO section wise in the tabs in sheet
+# section wise in the tabs in sheet
 # TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
 # --- CONFIGURATION ---
@@ -18,18 +19,16 @@ load_dotenv()
 # STUDENT_SUBMISSIONS = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
 STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
 STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
-
-INPUT_SHEET_NAME = "Submissions"
-OUTPUT_SHEET_NAME = "Results"
 STUDENT_NAME_COLUMN = "Student Name"
-REPO_URL_COLUMN = "Repo URL"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
 # NEW: Input to provide to the Java program's standard input.
 # Use '\n' to simulate the user pressing the Enter key.
 #TODO set the input based on the question for different assignments
-PROGRAM_INPUT = "25.0\n0.0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
+# PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
 
+with open("workshop_inputs.json", "r", encoding="utf-8") as f:
+    WORKSHOP_INPUTS = json.load(f)
 # --- END OF CONFIGURATION ---
 
 def find_file(directory, filename):
@@ -79,7 +78,7 @@ def detect_main_class(java_files):
     return None
 
 
-def process_student_repo(repo_url):
+def process_student_repo(repo_url, PROGRAM_INPUT):
     """
     Clones, compiles, and runs a student's Java project.
     Returns a status string and any relevant error messages.
@@ -116,7 +115,8 @@ def process_student_repo(repo_url):
 
         # compile all java files from repo root so package structure is preserved
         print(f"  Compiling Java files ({len(java_files)} files)...")
-        compile_command = ["javac"] + java_files
+        relative_java_files = [os.path.relpath(f, clone_path) for f in java_files]
+        compile_command = ["javac", "-d", clone_path] + relative_java_files
         compile_result = run_command(compile_command, clone_path)
 
         if compile_result == "Timeout":
@@ -130,7 +130,7 @@ def process_student_repo(repo_url):
         run_command_list = ["java", "-cp", clone_path, main_class]
         # *** THE IMPORTANT CHANGE IS HERE ***
         run_result = run_command(run_command_list, clone_path, input_data=PROGRAM_INPUT)
-
+        print(f"  Program output:\n{run_result}")
         if run_result == "Timeout":
              return "Runtime Error", "Program timed out. It might have an infinite loop or requested more input than provided."
         if run_result is None or run_result.returncode != 0:
@@ -145,6 +145,13 @@ def main():
     (columns named "Workshop 1 Repo URL" .. "Workshop 11 Repo URL")
      """
     print("--- Starting Student Project Grader ---")  
+    
+    # Ask section
+    section = input("Enter section 1 to 5: ").strip().upper()
+    INPUT_SHEET_NAME = f"C{section}"
+    OUTPUT_SHEET_NAME = f"C{section}"
+    print(f"Working on section: {INPUT_SHEET_NAME}")
+    
     while True:
         try:
             workshop = int(input("Enter workshop number (1-11): "))
@@ -159,7 +166,9 @@ def main():
     if not os.path.exists(STUDENT_SUBMISSIONS):
         print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
         return
-
+    # Pick input for this workshop
+    PROGRAM_INPUT = WORKSHOP_INPUTS.get(str(workshop), {}).get("input", "")
+    print(f"Using input for Workshop {workshop}: {repr(PROGRAM_INPUT)}")
     try:
         df = pd.read_excel(STUDENT_SUBMISSIONS, sheet_name=INPUT_SHEET_NAME)
     except Exception as e:
@@ -172,7 +181,7 @@ def main():
         repo_url = row.get(REPO_URL_COLUMN)
         print(f"\nProcessing {student_name}...")
         
-        status, details = process_student_repo(repo_url)
+        status, details = process_student_repo(repo_url, PROGRAM_INPUT)
         
         final_status = {
             "Absent": "Absent",
@@ -191,7 +200,7 @@ def main():
         })
 
     results_df = pd.DataFrame(results)
-    
+        
 
     print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{STUDENT_RESULTS}'...")
     ''' FIXME if there are no students name but has results then it will fail, gives -> Error writing to Excel file: cannot reindex on an axis with duplicate labels
@@ -200,8 +209,7 @@ def main():
     Works properly if the student name column has student names'''
     try:
         status_col = f"Workshop {workshop} Status"
-        details_col = f"Workshop {workshop} Details"
-
+        # details_col = f"Workshop {workshop} Details"
         # Read existing Results sheet if present
         if os.path.exists(STUDENT_RESULTS):
             try:
@@ -212,7 +220,7 @@ def main():
             existing = pd.DataFrame()
 
         new = results_df.copy()  # results_df contains STUDENT_NAME_COLUMN and the two workshop columns
-
+        print(f"Evaluated results: \n",new)
         # If an existing Results sheet has a student name column, merge by student name
         if not existing.empty and STUDENT_NAME_COLUMN in existing.columns:
             existing = existing.set_index(STUDENT_NAME_COLUMN)
@@ -223,7 +231,7 @@ def main():
 
             # Update/insert the two workshop columns from the new results (aligns by student)
             existing[status_col] = new[status_col].reindex(all_index)
-            existing[details_col] = new[details_col].reindex(all_index)
+            # existing[details_col] = new[details_col].reindex(all_index)
 
             merged = existing.reset_index()
         else:
