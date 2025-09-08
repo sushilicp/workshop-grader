@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 # work with different sheets for submissions and results
-# TODO section wise in the tabs in sheet
+# section wise in the tabs in sheet
 # TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
 # --- CONFIGURATION ---
@@ -19,8 +19,6 @@ load_dotenv()
 STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
 STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
 
-# INPUT_SHEET_NAME = ""
-# OUTPUT_SHEET_NAME = ""
 STUDENT_NAME_COLUMN = "Student Name"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
@@ -197,7 +195,7 @@ def main():
         })
 
     results_df = pd.DataFrame(results)
-    
+        
 
     print(f"\nWriting results to sheet '{OUTPUT_SHEET_NAME}' in '{STUDENT_RESULTS}'...")
     ''' FIXME if there are no students name but has results then it will fail, gives -> Error writing to Excel file: cannot reindex on an axis with duplicate labels
@@ -206,8 +204,7 @@ def main():
     Works properly if the student name column has student names'''
     try:
         status_col = f"Workshop {workshop} Status"
-        details_col = f"Workshop {workshop} Details"
-
+        # details_col = f"Workshop {workshop} Details"
         # Read existing Results sheet if present
         if os.path.exists(STUDENT_RESULTS):
             try:
@@ -218,7 +215,7 @@ def main():
             existing = pd.DataFrame()
 
         new = results_df.copy()  # results_df contains STUDENT_NAME_COLUMN and the two workshop columns
-
+        print(f"Evaluated results: \n",new)
         # If an existing Results sheet has a student name column, merge by student name
         if not existing.empty and STUDENT_NAME_COLUMN in existing.columns:
             existing = existing.set_index(STUDENT_NAME_COLUMN)
@@ -229,7 +226,7 @@ def main():
 
             # Update/insert the two workshop columns from the new results (aligns by student)
             existing[status_col] = new[status_col].reindex(all_index)
-            existing[details_col] = new[details_col].reindex(all_index)
+            # existing[details_col] = new[details_col].reindex(all_index)
 
             merged = existing.reset_index()
         else:
