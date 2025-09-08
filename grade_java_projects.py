@@ -19,10 +19,9 @@ load_dotenv()
 STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
 STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
 
-INPUT_SHEET_NAME = "Submissions"
-OUTPUT_SHEET_NAME = "Results"
+# INPUT_SHEET_NAME = ""
+# OUTPUT_SHEET_NAME = ""
 STUDENT_NAME_COLUMN = "Student Name"
-REPO_URL_COLUMN = "Repo URL"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
 # NEW: Input to provide to the Java program's standard input.
@@ -145,6 +144,13 @@ def main():
     (columns named "Workshop 1 Repo URL" .. "Workshop 11 Repo URL")
      """
     print("--- Starting Student Project Grader ---")  
+    
+    # Ask section
+    section = input("Enter section 1 to 5: ").strip().upper()
+    INPUT_SHEET_NAME = f"C{section}"
+    OUTPUT_SHEET_NAME = f"C{section}"
+    print(f"Working on section: {INPUT_SHEET_NAME}")
+    
     while True:
         try:
             workshop = int(input("Enter workshop number (1-11): "))
