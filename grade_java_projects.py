@@ -25,7 +25,7 @@ PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 # NEW: Input to provide to the Java program's standard input.
 # Use '\n' to simulate the user pressing the Enter key.
 #TODO set the input based on the question for different assignments
-PROGRAM_INPUT = "25.0\n0.0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
+PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
 
 # --- END OF CONFIGURATION ---
 
@@ -113,7 +113,8 @@ def process_student_repo(repo_url):
 
         # compile all java files from repo root so package structure is preserved
         print(f"  Compiling Java files ({len(java_files)} files)...")
-        compile_command = ["javac"] + java_files
+        relative_java_files = [os.path.relpath(f, clone_path) for f in java_files]
+        compile_command = ["javac", "-d", clone_path] + relative_java_files
         compile_result = run_command(compile_command, clone_path)
 
         if compile_result == "Timeout":
@@ -127,7 +128,7 @@ def process_student_repo(repo_url):
         run_command_list = ["java", "-cp", clone_path, main_class]
         # *** THE IMPORTANT CHANGE IS HERE ***
         run_result = run_command(run_command_list, clone_path, input_data=PROGRAM_INPUT)
-
+        print(f"  Program output:\n{run_result}")
         if run_result == "Timeout":
              return "Runtime Error", "Program timed out. It might have an infinite loop or requested more input than provided."
         if run_result is None or run_result.returncode != 0:
