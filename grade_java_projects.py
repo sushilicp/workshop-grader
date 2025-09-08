@@ -4,6 +4,7 @@ import subprocess
 import shutil
 import tempfile
 import re
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,15 +19,16 @@ load_dotenv()
 # STUDENT_SUBMISSIONS = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
 STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
 STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
-
 STUDENT_NAME_COLUMN = "Student Name"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
 # NEW: Input to provide to the Java program's standard input.
 # Use '\n' to simulate the user pressing the Enter key.
 #TODO set the input based on the question for different assignments
-PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
+# PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
 
+with open("workshop_inputs.json", "r", encoding="utf-8") as f:
+    WORKSHOP_INPUTS = json.load(f)
 # --- END OF CONFIGURATION ---
 
 def find_file(directory, filename):
@@ -76,7 +78,7 @@ def detect_main_class(java_files):
     return None
 
 
-def process_student_repo(repo_url):
+def process_student_repo(repo_url, PROGRAM_INPUT):
     """
     Clones, compiles, and runs a student's Java project.
     Returns a status string and any relevant error messages.
@@ -164,7 +166,9 @@ def main():
     if not os.path.exists(STUDENT_SUBMISSIONS):
         print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
         return
-
+    # Pick input for this workshop
+    PROGRAM_INPUT = WORKSHOP_INPUTS.get(str(workshop), {}).get("input", "")
+    print(f"Using input for Workshop {workshop}: {repr(PROGRAM_INPUT)}")
     try:
         df = pd.read_excel(STUDENT_SUBMISSIONS, sheet_name=INPUT_SHEET_NAME)
     except Exception as e:
@@ -177,7 +181,7 @@ def main():
         repo_url = row.get(REPO_URL_COLUMN)
         print(f"\nProcessing {student_name}...")
         
-        status, details = process_student_repo(repo_url)
+        status, details = process_student_repo(repo_url, PROGRAM_INPUT)
         
         final_status = {
             "Absent": "Absent",
