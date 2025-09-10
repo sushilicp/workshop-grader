@@ -247,6 +247,12 @@ def main():
         except ValueError:
             pass
         print("Please enter a number between 1 and 11.")
+        
+    # Validate if the workshop exists in the JSON
+    if str(workshop) not in WORKSHOP_TESTS:
+        print(f"Error: Workshop {workshop} is not defined in the JSON file.")
+        return
+    
     REPO_URL_COLUMN = f"Workshop {workshop} Repo URL"
     print(f"Using repository column: '{REPO_URL_COLUMN}'")
 
