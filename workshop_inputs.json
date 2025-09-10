@@ -1,14 +1,32 @@
 {
-    "1": {
-        "task": "Add two numbers",
-        "input": "25.0\n0.0\n"
-    },
-    "2": {
-        "task": "Subtract two numbers",
-        "input": "25.0\n0.0\n"
-    },
-    "3": {
-        "task": "Check Credit Card Number Validity using Luhn's Algorithm",
-        "input": "4003600000000014\n0\n"
-    }
+  "1": {
+    "task": "Hello World",
+    "tests": [
+      { "input": "", "expected": "Hello World" },
+      { "input": "\n", "expected": "Hello World" },
+      { "input": "ignored input\n", "expected": "Hello World" }
+    ]
+  },
+  "2": {
+    "task": "Subtract two numbers",
+    "tests": [
+      { "input": "25.0\n10.0\n", "expected": "Difference: 15.0" },
+      { "input": "10.0\n5.0\n", "expected": "Difference: 5.0" },
+      { "input": "0.0\n10.0\n", "expected": "Difference: -10.0" },
+      { "input": "-5.0\n-3.0\n", "expected": "Difference: -2.0" },
+      { "input": "100.5\n50.25\n", "expected": "Difference: 50.25" }
+    ]
+  },
+  "3": {
+    "task": "Check Credit Card Number Validity using Luhn's Algorithm",
+    "tests": [
+      { "input": "4003600000000014\n0\n", "expected": "Valid Card" },
+      { "input": "5555555555554444\n0\n", "expected": "Valid Card" },
+      { "input": "378282246310005\n0\n", "expected": "Valid Card" },
+      { "input": "4111111111111111\n0\n", "expected": "Valid Card" },
+      { "input": "1234567890123456\n0\n", "expected": "Invalid Card" },
+      { "input": "378282246310004\n0\n", "expected": "Invalid Card" },
+      { "input": "0000000000000000\n0\n", "expected": "Invalid Card" }
+    ]
+  }
 }
