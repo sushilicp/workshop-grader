@@ -5,6 +5,9 @@ import shutil
 import tempfile
 import re
 import json
+from openpyxl import load_workbook
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.utils import get_column_letter
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,6 +40,36 @@ def find_file(directory, filename):
             return os.path.join(root, filename)
     return None
 
+def add_dropdown_to_status_column(file_path, sheet_name, workshop_number):
+    """
+    Adds a dropdown list to the specified status column in the given sheet.
+    Dropdown options: ["⛔Absent", "❌Incomplete", "⚠️Partial Complete", "✅Complete"]
+    """
+    try:
+        status_column_index = workshop_number + 1  # Column B is 2, C is 3, etc.
+        status_column_letter = get_column_letter(status_column_index)
+        # Load the workbook and sheet
+        workbook = load_workbook(file_path)
+        if sheet_name not in workbook.sheetnames:
+            print(f"Error: Sheet '{sheet_name}' not found in workbook.")
+            return
+        sheet = workbook[sheet_name]
+
+        # Create a data validation object for dropdown
+        dropdown = DataValidation(type="list", formula1='"⛔Absent,❌Incomplete,⚠️Partial Complete,✅Complete"', allow_blank=True)
+        sheet.add_data_validation(dropdown)
+
+        # Apply the dropdown to the entire column
+        for row in range(2, sheet.max_row + 1):  # Start from row 2 to skip the header
+            cell = sheet[f"{status_column_letter}{row}"]
+            dropdown.add(cell)
+
+        # Save the workbook
+        workbook.save(file_path)
+        print(f"Dropdown added successfully to column '{status_column_letter}' in sheet '{sheet_name}'.")
+    except Exception as e:
+        print(f"Error adding dropdown: {e}")
+        
 def run_command(command, working_dir, input_data=None):
     """
     Runs a command, optionally providing input data to its stdin.
@@ -84,7 +117,7 @@ def process_student_repo(repo_url, PROGRAM_INPUT):
     Returns a status string and any relevant error messages.
     """
     if not repo_url or pd.isna(repo_url):
-        return "Absent", "No repository URL provided."
+        return "⛔Absent", "No repository URL provided."
 
     with tempfile.TemporaryDirectory() as temp_dir:
         clone_path = os.path.join(temp_dir, "repo")
@@ -106,12 +139,12 @@ def process_student_repo(repo_url, PROGRAM_INPUT):
                 if fname.endswith(".java"):
                     java_files.append(os.path.join(root, fname))
         if not java_files:
-            return "Incomplete", "No .java files found in the repository."
+            return "❌Incomplete", "No .java files found in the repository."
 
         main_class = detect_main_class(java_files)
         print(f"  Detected main class: {main_class}")
         if main_class is None:
-            return "Incomplete", "Could not find a class with a main method."
+            return "❌Incomplete", "Could not find a class with a main method."
 
         # compile all java files from repo root so package structure is preserved
         print(f"  Compiling Java files ({len(java_files)} files)...")
@@ -130,14 +163,14 @@ def process_student_repo(repo_url, PROGRAM_INPUT):
         run_command_list = ["java", "-cp", clone_path, main_class]
         # *** THE IMPORTANT CHANGE IS HERE ***
         run_result = run_command(run_command_list, clone_path, input_data=PROGRAM_INPUT)
-        print(f"  Program output:\n{run_result}")
+        print(f"  Program output:\n{run_result.stdout}")
         if run_result == "Timeout":
              return "Runtime Error", "Program timed out. It might have an infinite loop or requested more input than provided."
         if run_result is None or run_result.returncode != 0:
             error_message = run_result.stderr if run_result else "Java command failed."
             return "Runtime Error", f"Program ran but failed with an error (e.g., wrong input format).\n{error_message}"
 
-        return "Completed", f"Program compiled and ran successfully.\nOutput:\n{run_result.stdout}"
+        return "✅Complete", f"Program compiled and ran successfully.\nOutput:\n{run_result.stdout}"
 
 def main():
     """Main function to drive the script.
@@ -147,9 +180,9 @@ def main():
     print("--- Starting Student Project Grader ---")  
     
     # Ask section
-    section = input("Enter section 1 to 5: ").strip().upper()
-    INPUT_SHEET_NAME = f"C{section}"
-    OUTPUT_SHEET_NAME = f"C{section}"
+    section = input("Enter section number: ").strip().upper()
+    INPUT_SHEET_NAME = f"L2C{section}"
+    OUTPUT_SHEET_NAME = f"L2C{section}"
     print(f"Working on section: {INPUT_SHEET_NAME}")
     
     while True:
@@ -166,9 +199,11 @@ def main():
     if not os.path.exists(STUDENT_SUBMISSIONS):
         print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
         return
+    
     # Pick input for this workshop
     PROGRAM_INPUT = WORKSHOP_INPUTS.get(str(workshop), {}).get("input", "")
     print(f"Using input for Workshop {workshop}: {repr(PROGRAM_INPUT)}")
+    
     try:
         df = pd.read_excel(STUDENT_SUBMISSIONS, sheet_name=INPUT_SHEET_NAME)
     except Exception as e:
@@ -184,12 +219,12 @@ def main():
         status, details = process_student_repo(repo_url, PROGRAM_INPUT)
         
         final_status = {
-            "Absent": "Absent",
-            "Git Clone Error": "Incomplete",
-            "Compile Error": "Incomplete",
-            "Runtime Error": "Partial Complete",
-            "Completed": "Completed"
-        }.get(status, "Unknown Error")
+            "⛔Absent": "⛔Absent",
+            "Git Clone Error": "❌Incomplete",
+            "Compile Error": "❌Incomplete",
+            "Runtime Error": "⚠️Partial Complete",
+            "✅Complete": "✅Complete"
+        }.get(status.strip(), "Unknown Error")
 
         print(f"  Status: {status} -> {final_status}")
         
@@ -243,6 +278,7 @@ def main():
         with pd.ExcelWriter(STUDENT_RESULTS, engine='openpyxl', mode=mode, if_sheet_exists='replace') as writer:
             merged.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
 
+        add_dropdown_to_status_column(STUDENT_RESULTS, OUTPUT_SHEET_NAME, workshop)  # Assuming column B for status
         print("--- Script finished successfully! ---")
     except Exception as e:
         print(f"\nError writing to Excel file: {e}")
