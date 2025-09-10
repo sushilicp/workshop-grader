@@ -31,7 +31,7 @@ PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 # PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
 
 with open("workshop_inputs.json", "r", encoding="utf-8") as f:
-    WORKSHOP_INPUTS = json.load(f)
+    WORKSHOP_TESTS = json.load(f)
 # --- END OF CONFIGURATION ---
 
 def find_file(directory, filename):
@@ -110,14 +110,79 @@ def detect_main_class(java_files):
                     return class_name
     return None
 
+def run_tests(clone_path, main_class, tests):
+    """
+    Runs multiple test cases for a compiled Java program.
+    Each test contains 'input' and optionally 'expected'.
+    Returns final status and detailed results.
+    """
+    results_summary = []
+    passed_count = 0
 
-def process_student_repo(repo_url, PROGRAM_INPUT):
+    for i, test in enumerate(tests, start=1):
+        print(f"  Running test case {i}...")
+        input_data = test["input"]
+        expected = test.get("expected")
+
+        run_command_list = ["java", "-cp", clone_path, main_class]
+        run_result = run_command(run_command_list, clone_path, input_data)
+
+        if run_result == "Timeout":
+            results_summary.append(f"Test {i}: Timeout ❌")
+            print(results_summary[-1])
+            continue
+        if run_result is None or run_result.returncode != 0:
+            error_message = run_result.stderr if run_result else "Java command failed"
+            results_summary.append(f"Test {i}: Runtime Error ❌ -> {error_message}")
+            print(results_summary[-1])
+            continue
+
+        program_output = (run_result.stdout + run_result.stderr).strip()
+
+        if expected:  # Compare expected vs actual
+            if expected not in program_output:
+                results_summary.append(
+                    f"Test {i}: Failed ❌\n"
+                    f"Input:\n{input_data}"
+                    f"Expected: \n{expected}\n"
+                    f"Got:\n{program_output}\n"
+                )
+            else:
+                results_summary.append(
+                    f"Test {i}: Passed ✅\n"
+                    f"Input:\n{input_data}"
+                    f"Expected: \n{expected}\n"
+                    f"Got:\n{program_output}\n"
+                )
+                passed_count += 1
+        else:  # No expected → just record output
+            results_summary.append(
+                f"Test {i}: Output captured"
+                f"Input:\n{input_data}"
+                f"Expected:\n{expected}\n"
+                f"Got:\n{program_output}\n"
+            )
+            passed_count += 1  # treat as pass if no expectation
+
+        print(results_summary[-1])  # print last test result
+        
+    total_tests = len(tests)
+    
+    if passed_count == total_tests:
+        return "✅Complete", f"Summary: {passed_count}/{total_tests} tests passed"
+    elif passed_count > 0:
+        return "Partial Complete", f"Summary: {passed_count}/{total_tests} tests passed"
+    else:
+        return "Runtime Error", f"Summary: {passed_count}/{total_tests} tests passed"
+
+    
+def process_student_repo(repo_url, tests):
     """
     Clones, compiles, and runs a student's Java project.
     Returns a status string and any relevant error messages.
     """
     if not repo_url or pd.isna(repo_url):
-        return "⛔Absent", "No repository URL provided."
+        return "Absent", "No repository URL provided."
 
     with tempfile.TemporaryDirectory() as temp_dir:
         clone_path = os.path.join(temp_dir, "repo")
@@ -139,12 +204,12 @@ def process_student_repo(repo_url, PROGRAM_INPUT):
                 if fname.endswith(".java"):
                     java_files.append(os.path.join(root, fname))
         if not java_files:
-            return "❌Incomplete", "No .java files found in the repository."
+            return "Incomplete", "No .java files found in the repository."
 
         main_class = detect_main_class(java_files)
         print(f"  Detected main class: {main_class}")
         if main_class is None:
-            return "❌Incomplete", "Could not find a class with a main method."
+            return "Incomplete", "Could not find a class with a main method."
 
         # compile all java files from repo root so package structure is preserved
         print(f"  Compiling Java files ({len(java_files)} files)...")
@@ -158,19 +223,8 @@ def process_student_repo(repo_url, PROGRAM_INPUT):
             error_message = compile_result.stderr if compile_result else "Javac command failed."
             return "Compile Error", f"Code did not compile.\n{error_message}"
 
-        # run using classpath = clone_path and the detected main_class (may include package)
-        print(f"  Running '{main_class}' with input...")
-        run_command_list = ["java", "-cp", clone_path, main_class]
-        # *** THE IMPORTANT CHANGE IS HERE ***
-        run_result = run_command(run_command_list, clone_path, input_data=PROGRAM_INPUT)
-        print(f"  Program output:\n{run_result.stdout}")
-        if run_result == "Timeout":
-             return "Runtime Error", "Program timed out. It might have an infinite loop or requested more input than provided."
-        if run_result is None or run_result.returncode != 0:
-            error_message = run_result.stderr if run_result else "Java command failed."
-            return "Runtime Error", f"Program ran but failed with an error (e.g., wrong input format).\n{error_message}"
-
-        return "✅Complete", f"Program compiled and ran successfully.\nOutput:\n{run_result.stdout}"
+        # --- run test cases ---
+        return run_tests(clone_path, main_class, tests)
 
 def main():
     """Main function to drive the script.
@@ -200,9 +254,8 @@ def main():
         print(f"Error: The file '{STUDENT_SUBMISSIONS}' was not found.")
         return
     
-    # Pick input for this workshop
-    PROGRAM_INPUT = WORKSHOP_INPUTS.get(str(workshop), {}).get("input", "")
-    print(f"Using input for Workshop {workshop}: {repr(PROGRAM_INPUT)}")
+    # get the tests for the workshop
+    tests = WORKSHOP_TESTS.get(str(workshop), {}).get("tests", [])   
     
     try:
         df = pd.read_excel(STUDENT_SUBMISSIONS, sheet_name=INPUT_SHEET_NAME)
@@ -216,13 +269,14 @@ def main():
         repo_url = row.get(REPO_URL_COLUMN)
         print(f"\nProcessing {student_name}...")
         
-        status, details = process_student_repo(repo_url, PROGRAM_INPUT)
+        status, details = process_student_repo(repo_url, tests)
         
         final_status = {
-            "⛔Absent": "⛔Absent",
+            "Absent": "⛔Absent",
             "Git Clone Error": "❌Incomplete",
             "Compile Error": "❌Incomplete",
             "Runtime Error": "⚠️Partial Complete",
+            "Partial Complete": "⚠️Partial Complete",
             "✅Complete": "✅Complete"
         }.get(status.strip(), "Unknown Error")
 
