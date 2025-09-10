@@ -1,14 +1,14 @@
 {
     "1": {
-        "task": "Subtract two numbers",
+        "task": "Add two numbers",
         "input": "25.0\n0.0\n"
     },
     "2": {
-        "task": "Check Credit Card Number Validity using Luhn's Algorithm",
-        "input": "4003600000000014\n0\n"
+        "task": "Subtract two numbers",
+        "input": "25.0\n0.0\n"
     },
     "3": {
         "task": "Check Credit Card Number Validity using Luhn's Algorithm",
-        "input": "some new text\n0\n"
+        "input": "4003600000000014\n0\n"
     }
 }
