@@ -22,13 +22,13 @@ load_dotenv()
 # STUDENT_SUBMISSIONS = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
 STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
 STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
+CLASSROOM_DIR = os.getenv("CLASSROOM_DIR", ".")
 STUDENT_NAME_COLUMN = "Student Name"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
 # NEW: Input to provide to the Java program's standard input.
 # Use '\n' to simulate the user pressing the Enter key.
-#TODO set the input based on the question for different assignments
-# PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
+# set the input based on the question for different assignments
 
 with open("workshop_inputs.json", "r", encoding="utf-8") as f:
     WORKSHOP_TESTS = json.load(f)
@@ -69,6 +69,56 @@ def add_dropdown_to_status_column(file_path, sheet_name, workshop_number):
         print(f"Dropdown added successfully to column '{status_column_letter}' in sheet '{sheet_name}'.")
     except Exception as e:
         print(f"Error adding dropdown: {e}")
+
+def update_master_with_classroom(master_file, classroom_file, workshop_number, sheet_name):
+    """
+    Update the Student Submissions sheet with a new GitHub Classroom assignment export.
+    """
+    try:
+        df_master = pd.read_excel(master_file, sheet_name=sheet_name)
+        df_classroom = pd.read_csv(classroom_file)
+
+        # Standardize classroom data
+        df_classroom = df_classroom.rename(columns={
+            "roster_identifier": "Student Name",
+            "student_repository_url": "Repo URL"
+        })[["Student Name", "Repo URL"]]
+        print("Classroom Data:")
+        print(df_classroom)
+        # Normalize student names (case + strip spaces) for consistent merge
+        df_master["Student Name"] = df_master["Student Name"].str.strip().str.upper()
+        df_classroom["Student Name"] = df_classroom["Student Name"].str.strip().str.upper()
+
+        # 🔑 Filter only students that are in this section
+        df_classroom = df_classroom[df_classroom["Student Name"].isin(df_master["Student Name"])]
+        print("Classroom Data Filter:")
+        print(df_classroom)
+        # Determine target column name
+        workshop_col = f"Workshop {workshop_number} Repo URL"
+
+        # Ensure column exists
+        if workshop_col not in df_master.columns:
+            df_master[workshop_col] = None
+
+        # Merge classroom info into master
+        df_master = df_master.merge(df_classroom, on="Student Name", how="outer")
+        print("Master Data:")
+        print(df_master)
+
+        # Update column with new repo URLs
+        df_master[workshop_col] = df_master["Repo URL"].combine_first(df_master[workshop_col])
+
+        # Drop helper column
+        df_master = df_master.drop(columns=["Repo URL"])
+    
+        # Save back to Excel (replace only this sheet)
+        with pd.ExcelWriter(master_file, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            df_master.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        print(f"✅ Updated '{master_file}' with Classroom CSV for Workshop {workshop_number} in sheet '{sheet_name}'.")
+    except Exception as e:
+        print(f"❌ Error updating master submissions: {e}")
+
         
 def run_command(command, working_dir, input_data=None):
     """
@@ -247,12 +297,18 @@ def main():
         except ValueError:
             pass
         print("Please enter a number between 1 and 11.")
-        
     # Validate if the workshop exists in the JSON
     if str(workshop) not in WORKSHOP_TESTS:
         print(f"Error: Workshop {workshop} is not defined in the JSON file.")
         return
     
+    CLASSROOM_FILE = os.path.join(CLASSROOM_DIR+f"\\L2C{section}", f"workshop_{workshop}.csv")
+
+    if os.path.exists(CLASSROOM_FILE):
+        update_master_with_classroom(STUDENT_SUBMISSIONS, CLASSROOM_FILE, workshop, INPUT_SHEET_NAME)
+    else:
+        print(f"⚠️ No classroom CSV found at {CLASSROOM_FILE}, skipping update.")
+        
     REPO_URL_COLUMN = f"Workshop {workshop} Repo URL"
     print(f"Using repository column: '{REPO_URL_COLUMN}'")
 
@@ -282,6 +338,7 @@ def main():
             "Git Clone Error": "❌Incomplete",
             "Compile Error": "❌Incomplete",
             "Runtime Error": "⚠️Partial Complete",
+            "Incomplete": "❌Incomplete",
             "Partial Complete": "⚠️Partial Complete",
             "✅Complete": "✅Complete"
         }.get(status.strip(), "Unknown Error")
