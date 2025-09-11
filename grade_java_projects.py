@@ -7,13 +7,14 @@ import re
 import json
 from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from dotenv import load_dotenv
 
 load_dotenv()
 # work with different sheets for submissions and results
 # section wise in the tabs in sheet
-# TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
+# work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
 # --- CONFIGURATION ---
 # IMPORTANT: Update these values in env to match your setup
@@ -70,6 +71,49 @@ def add_dropdown_to_status_column(file_path, sheet_name, workshop_number):
     except Exception as e:
         print(f"Error adding dropdown: {e}")
 
+def format_results_sheet(file_path, sheet_name):
+    """Format all cells: font size 16, centered, bordered. Header row bold."""
+    try:
+        wb = load_workbook(file_path)
+        if sheet_name not in wb.sheetnames:
+            print(f"⚠️ Sheet '{sheet_name}' not found in workbook.")
+            return
+        ws = wb[sheet_name]
+
+        # Styles
+        font = Font(size=16)
+        bold_font = Font(size=16, bold=True)
+        align = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        thin_border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin")
+        )
+
+        for row_idx, row in enumerate(ws.iter_rows(), start=1):
+            for cell in row:
+                # Bold header row
+                if row_idx == 1:
+                    cell.font = bold_font
+                else:
+                    cell.font = font
+                cell.alignment = align
+                cell.border = thin_border
+                
+        for col in ws.columns:
+            max_length = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            ws.column_dimensions[col_letter].width = max_length
+            
+        wb.save(file_path)
+        print(f"Formatted '{sheet_name}' in '{file_path}' successfully.")
+    except Exception as e:
+        print(f"Error formatting sheet: {e}")
+
 def update_master_with_classroom(master_file, classroom_file, workshop_number, sheet_name):
     """
     Update the Student Submissions sheet with a new GitHub Classroom assignment export.
@@ -78,40 +122,28 @@ def update_master_with_classroom(master_file, classroom_file, workshop_number, s
         df_master = pd.read_excel(master_file, sheet_name=sheet_name)
         df_classroom = pd.read_csv(classroom_file)
 
-        # Standardize classroom data
         df_classroom = df_classroom.rename(columns={
             "roster_identifier": "Student Name",
             "student_repository_url": "Repo URL"
         })[["Student Name", "Repo URL"]]
-        print("Classroom Data:")
-        print(df_classroom)
+
         # Normalize student names (case + strip spaces) for consistent merge
         df_master["Student Name"] = df_master["Student Name"].str.strip().str.upper()
         df_classroom["Student Name"] = df_classroom["Student Name"].str.strip().str.upper()
 
-        # 🔑 Filter only students that are in this section
         df_classroom = df_classroom[df_classroom["Student Name"].isin(df_master["Student Name"])]
-        print("Classroom Data Filter:")
-        print(df_classroom)
-        # Determine target column name
-        workshop_col = f"Workshop {workshop_number} Repo URL"
 
-        # Ensure column exists
+        workshop_col = f"Workshop {workshop_number} Repo URL"
+        
         if workshop_col not in df_master.columns:
             df_master[workshop_col] = None
 
-        # Merge classroom info into master
         df_master = df_master.merge(df_classroom, on="Student Name", how="outer")
-        print("Master Data:")
-        print(df_master)
 
-        # Update column with new repo URLs
         df_master[workshop_col] = df_master["Repo URL"].combine_first(df_master[workshop_col])
 
-        # Drop helper column
         df_master = df_master.drop(columns=["Repo URL"])
-    
-        # Save back to Excel (replace only this sheet)
+
         with pd.ExcelWriter(master_file, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             df_master.to_excel(writer, sheet_name=sheet_name, index=False)
 
@@ -395,7 +427,8 @@ def main():
         with pd.ExcelWriter(STUDENT_RESULTS, engine='openpyxl', mode=mode, if_sheet_exists='replace') as writer:
             merged.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
 
-        add_dropdown_to_status_column(STUDENT_RESULTS, OUTPUT_SHEET_NAME, workshop)  # Assuming column B for status
+        add_dropdown_to_status_column(STUDENT_RESULTS, OUTPUT_SHEET_NAME, workshop) 
+        format_results_sheet(STUDENT_RESULTS, OUTPUT_SHEET_NAME)
         print("--- Script finished successfully! ---")
     except Exception as e:
         print(f"\nError writing to Excel file: {e}")
