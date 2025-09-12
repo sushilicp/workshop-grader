@@ -7,13 +7,14 @@ import re
 import json
 from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from dotenv import load_dotenv
 
 load_dotenv()
 # work with different sheets for submissions and results
 # section wise in the tabs in sheet
-# TODO work in onedrive sheets, get details from tab -> sections {choose the tab name}
+# work in onedrive sheets, get details from tab -> sections {choose the tab name}
 
 # --- CONFIGURATION ---
 # IMPORTANT: Update these values in env to match your setup
@@ -22,13 +23,13 @@ load_dotenv()
 # STUDENT_SUBMISSIONS = "C:/Users/YourUsername/OneDrive/StudentProjects.xlsx" # Example for Windows
 STUDENT_SUBMISSIONS = os.path.expanduser(os.getenv("STUDENT_SUBMISSIONS")) # Example for Mac/Linux
 STUDENT_RESULTS = os.path.expanduser(os.getenv("STUDENT_RESULTS"))
+CLASSROOM_DIR = os.getenv("CLASSROOM_DIR", ".")
 STUDENT_NAME_COLUMN = "Student Name"
 PROGRAM_TIMEOUT = 15 # A shorter timeout is fine for simple programs
 
 # NEW: Input to provide to the Java program's standard input.
 # Use '\n' to simulate the user pressing the Enter key.
-#TODO set the input based on the question for different assignments
-# PROGRAM_INPUT = "4003600000000014\n0\n" # Provides 25.0 for the first prompt, 10.0 for the second.
+# set the input based on the question for different assignments
 
 with open("workshop_inputs.json", "r", encoding="utf-8") as f:
     WORKSHOP_TESTS = json.load(f)
@@ -69,6 +70,87 @@ def add_dropdown_to_status_column(file_path, sheet_name, workshop_number):
         print(f"Dropdown added successfully to column '{status_column_letter}' in sheet '{sheet_name}'.")
     except Exception as e:
         print(f"Error adding dropdown: {e}")
+
+def format_results_sheet(file_path, sheet_name):
+    """Format all cells: font size 16, centered, bordered. Header row bold."""
+    try:
+        wb = load_workbook(file_path)
+        if sheet_name not in wb.sheetnames:
+            print(f"⚠️ Sheet '{sheet_name}' not found in workbook.")
+            return
+        ws = wb[sheet_name]
+
+        # Styles
+        font = Font(size=16)
+        bold_font = Font(size=16, bold=True)
+        align = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        thin_border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin")
+        )
+
+        for row_idx, row in enumerate(ws.iter_rows(), start=1):
+            for cell in row:
+                # Bold header row
+                if row_idx == 1:
+                    cell.font = bold_font
+                else:
+                    cell.font = font
+                cell.alignment = align
+                cell.border = thin_border
+                
+        for col in ws.columns:
+            max_length = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            ws.column_dimensions[col_letter].width = max_length
+            
+        wb.save(file_path)
+        print(f"Formatted '{sheet_name}' in '{file_path}' successfully.")
+    except Exception as e:
+        print(f"Error formatting sheet: {e}")
+
+def update_master_with_classroom(master_file, classroom_file, workshop_number, sheet_name):
+    """
+    Update the Student Submissions sheet with a new GitHub Classroom assignment export.
+    """
+    try:
+        df_master = pd.read_excel(master_file, sheet_name=sheet_name)
+        df_classroom = pd.read_csv(classroom_file)
+
+        df_classroom = df_classroom.rename(columns={
+            "roster_identifier": "Student Name",
+            "student_repository_url": "Repo URL"
+        })[["Student Name", "Repo URL"]]
+
+        # Normalize student names (case + strip spaces) for consistent merge
+        df_master["Student Name"] = df_master["Student Name"].str.strip().str.upper()
+        df_classroom["Student Name"] = df_classroom["Student Name"].str.strip().str.upper()
+
+        df_classroom = df_classroom[df_classroom["Student Name"].isin(df_master["Student Name"])]
+
+        workshop_col = f"Workshop {workshop_number} Repo URL"
+        
+        if workshop_col not in df_master.columns:
+            df_master[workshop_col] = None
+
+        df_master = df_master.merge(df_classroom, on="Student Name", how="outer")
+
+        df_master[workshop_col] = df_master["Repo URL"].combine_first(df_master[workshop_col])
+
+        df_master = df_master.drop(columns=["Repo URL"])
+
+        with pd.ExcelWriter(master_file, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            df_master.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        print(f"✅ Updated '{master_file}' with Classroom CSV for Workshop {workshop_number} in sheet '{sheet_name}'.")
+    except Exception as e:
+        print(f"❌ Error updating master submissions: {e}")
+
         
 def run_command(command, working_dir, input_data=None):
     """
@@ -247,12 +329,18 @@ def main():
         except ValueError:
             pass
         print("Please enter a number between 1 and 11.")
-        
     # Validate if the workshop exists in the JSON
     if str(workshop) not in WORKSHOP_TESTS:
         print(f"Error: Workshop {workshop} is not defined in the JSON file.")
         return
     
+    CLASSROOM_FILE = os.path.join(CLASSROOM_DIR+f"\\L2C{section}", f"workshop_{workshop}.csv")
+
+    if os.path.exists(CLASSROOM_FILE):
+        update_master_with_classroom(STUDENT_SUBMISSIONS, CLASSROOM_FILE, workshop, INPUT_SHEET_NAME)
+    else:
+        print(f"⚠️ No classroom CSV found at {CLASSROOM_FILE}, skipping update.")
+        
     REPO_URL_COLUMN = f"Workshop {workshop} Repo URL"
     print(f"Using repository column: '{REPO_URL_COLUMN}'")
 
@@ -282,6 +370,7 @@ def main():
             "Git Clone Error": "❌Incomplete",
             "Compile Error": "❌Incomplete",
             "Runtime Error": "⚠️Partial Complete",
+            "Incomplete": "❌Incomplete",
             "Partial Complete": "⚠️Partial Complete",
             "✅Complete": "✅Complete"
         }.get(status.strip(), "Unknown Error")
@@ -338,7 +427,8 @@ def main():
         with pd.ExcelWriter(STUDENT_RESULTS, engine='openpyxl', mode=mode, if_sheet_exists='replace') as writer:
             merged.to_excel(writer, sheet_name=OUTPUT_SHEET_NAME, index=False)
 
-        add_dropdown_to_status_column(STUDENT_RESULTS, OUTPUT_SHEET_NAME, workshop)  # Assuming column B for status
+        add_dropdown_to_status_column(STUDENT_RESULTS, OUTPUT_SHEET_NAME, workshop) 
+        format_results_sheet(STUDENT_RESULTS, OUTPUT_SHEET_NAME)
         print("--- Script finished successfully! ---")
     except Exception as e:
         print(f"\nError writing to Excel file: {e}")
