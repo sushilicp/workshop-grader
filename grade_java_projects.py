@@ -10,6 +10,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from dotenv import load_dotenv
+from download_repo import start_download
 
 load_dotenv()
 # work with different sheets for submissions and results
@@ -333,6 +334,10 @@ def main():
     if str(workshop) not in WORKSHOP_TESTS:
         print(f"Error: Workshop {workshop} is not defined in the JSON file.")
         return
+    try:
+        start_download(section, workshop)
+    except ConnectionError:
+        print("connect to internet...")
     
     CLASSROOM_FILE = os.path.join(CLASSROOM_DIR+f"\\L2C{section}", f"workshop_{workshop}.csv")
 

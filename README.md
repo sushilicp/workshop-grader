@@ -21,6 +21,7 @@ Create a `.env` file in the root of the project directory and add the following 
 STUDENT_SUBMISSIONS="path/to/your/submissions.xlsx"
 STUDENT_RESULTS="path/to/your/results.xlsx"
 CLASSROOM_DIR="path/to/your/classroom_exports"
+GITHUB_TOKEN="github_token_generate"
 ```
 
 -   `STUDENT_SUBMISSIONS`: The absolute path to the Excel file containing student submission details. This file should have sheets for each section that you teach (e.g., `L2C1`, `L2C2`). 
@@ -67,12 +68,13 @@ The `workshop_inputs.json` file contains the test cases for each workshop. Each 
 
     Follow the following column structure with sections sheets as the format: `L2C1`, `L2C2` sections that you teach for both repo and result excel files.
 5. **Submissions from Classrooms**
-    - Download and rename the file as workshop_X.csv and put it in the section folder of the working directory.
+    
 
-    ![download classroom submissions](images/image-5.png)
+    ![classroom assignment id](./images/github_classroom_assignment_id.gif)
     
     ```
         The script will:
+        - Download and rename the file as workshop_X.csv and put it in the section folder of the working directory.
         - Read the corresponding workshop_X.csv files from each section.
         - Match students by name.
         - Insert/update their repo URLs in the Submissions sheet.
@@ -88,6 +90,8 @@ The `workshop_inputs.json` file contains the test cases for each workshop. Each 
 2.  **Enter the section number** when prompted. This corresponds to the sheet name in your Excel files (e.g., for sheet `L2C5`, enter `5`).
 
 3.  **Enter the workshop number** (e.g., `1`, `2`, etc.). The script will use the corresponding test cases from `workshop_inputs.json`.
+
+4.  **Enter the assignment id** (e.g., `15522`, etc.). 
 
     ```
         The script will then:
