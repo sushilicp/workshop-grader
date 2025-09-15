@@ -21,12 +21,13 @@ Create a `.env` file in the root of the project directory and add the following 
 STUDENT_SUBMISSIONS="path/to/your/submissions.xlsx"
 STUDENT_RESULTS="path/to/your/results.xlsx"
 CLASSROOM_DIR="path/to/your/classroom_exports"
-GITHUB_TOKEN="github_token_generate"
+GITHUB_TOKEN="github_token_generated"
 ```
 
 -   `STUDENT_SUBMISSIONS`: The absolute path to the Excel file containing student submission details. This file should have sheets for each section that you teach (e.g., `L2C1`, `L2C2`). 
 -   `STUDENT_RESULTS`: The absolute path to the Excel file where the grading results will be stored. This will also have the sheets same as the `STUDENT_SUBMISSIONS`.
 -   `CLASSROOM_DIR`: The directory where GitHub Classroom assignment CSVs are stored. The script expects a structure like `CLASSROOM_DIR/L2C1/workshop_1.csv`.
+-   `GITHUB_TOKEN`: Personal Access Token (PAT) generated from GitHub.
 
 ### 3. System Requirements
 
